@@ -1,6 +1,7 @@
 const net = require('net');
 const HID = require('node-hid');
 const scanf=require('sscanf');
+const config=require('./xhcrc');
 
 // initialize buttons to nothing pressed;
 var prevButtons=[0,0];
@@ -9,7 +10,7 @@ var prevButtons=[0,0];
 var axis=0;
 
 // Default to 2% / 0.001
-var feedselect =0;
+var feedselect=0;
 
 // CNC parameters
 var WPos=[1,2,3];
@@ -26,8 +27,8 @@ buff[1]=0xFD;
 buff[2]=0x04;
 
 // telnet host param
-var HOST = '192.168.0.235';
-var PORT = 23;
+var HOST = config.HOST;
+var PORT = config.PORT;
   
 // create message stack
 var bufTelnetIncoming=[];
@@ -37,7 +38,13 @@ const tmrWait = 500;
 
 // Start USB setup here
 // Find XHC-HB04
-var devices = HID.devices(0x10CE,0xEB93);
+const devices = HID.devices(config.HID_VID,config.HID_PID);
+
+if (devices.length === 0) {
+  console.error("Could not find HID device with VID=0x%s and PID=0x%s",config.HID_VID.toString(16), config.HID_PID.toString(16));
+  process.exit(1);
+}
+
 var dev_USB_OUT;
 var dev_USB_IN;
 

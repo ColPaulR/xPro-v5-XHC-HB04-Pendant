@@ -11,6 +11,7 @@ buff[2] = 0x04;
 // Find XHC-HB04
 function USB_Init(HID_VID, HID_PID) {
   const devices = HID.devices(HID_VID, HID_PID);
+  
   if (devices.length === 0) {
     console.error("Could not find HID device with VID=0x%s and PID=0x%s", HID_VID.toString(16), HID_PID.toString(16));
     process.exit(1);

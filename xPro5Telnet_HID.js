@@ -1,7 +1,7 @@
-const net = require('net');
-const scanf = require('sscanf');
 const config = require('./xhcrc');
 const {USB_Init, xhc_set_display } = require("./USB_devices");
+// const { myTelnet } = require("./myTelnet");
+const { Telnet_Init } = require('./myTelnet');
 
 // initialize buttons to nothing pressed;
 var prevButtons = [0, 0];
@@ -22,9 +22,6 @@ var CNC_state = {
 // Use Work Position or Machine Position
 var WorkPos = 0;
 
-// create message stack
-var bufTelnetIncoming = [];
-
 const dev_USB_IN=USB_Init(config.HID_VID, config.HID_PID);
 
 // Setup callback for data in
@@ -32,63 +29,8 @@ dev_USB_IN.on('data', function (d) {
   parseButtonData(d);
 });
 
-// Setup telnet connection and start listening
-var myTelnet = new net.Socket();
-myTelnet.connect(config.PORT, config.HOST, function () {
-  // Log that we are connected to telnet
-  console.log('CONNECTED TO: ' + config.HOST + ':' + config.PORT);
-
-  // Start timer 
-  cbTimer();
-});
-
-// Add a 'data' event handler for the client socket
-// data is what the server sent to this socket
-myTelnet.on('data', function (data) {
-  onTelnetData(data);
-});
-
-// Add a 'close' event handler for the myTelnet socket
-myTelnet.on('close', function () {
-  console.log('Connection closed');
-  myTelnet.destroy();
-});
-
-// Timer functions
-function cbTimer() {
-  // Check to see if telnet is still connected
-  if (!myTelnet.destroyed) {
-    // query Grbl status
-    myTelnet.write('?');
-
-    // Restart timer to trigger after 500ms
-    setTimeout(cbTimer, 500);
-  }
-}
-
-// Telnet functions
-function onTelnetData(data) {
-  // send data to console log
-  // console.log('DATA: ' + data);
-
-  // Add new data to end of incoming stack
-  bufTelnetIncoming += data;
-
-  // Check to see a new line LF + CR in the message queue
-  var iNLCR = bufTelnetIncoming.indexOf('\r\n');
-  do {
-    // Found whole line so parse
-    if (iNLCR) {
-      // Non-zero length before \r\n
-      parseGrbl(bufTelnetIncoming.slice(0, iNLCR));
-    }
-
-    // Remove the string that was just parsed from the message queue
-    bufTelnetIncoming = bufTelnetIncoming.slice(iNLCR + 2);
-    iNLCR = bufTelnetIncoming.indexOf('\r\n');
-  } while (iNLCR >= 0);
-}
-// End Telnet functions
+// Initialize Telnet
+Telnet_Init(config.HOST, config.PORT, parseGrbl);
 
 // Begin XHC out and Grbl parsing functions
 function parseGrbl(bufResponse) {
@@ -131,6 +73,7 @@ function parseGrbl(bufResponse) {
 
   xhc_set_display();
 }
+exports.parseGrbl = parseGrbl;
 
 
 // Begin XHC in functions here

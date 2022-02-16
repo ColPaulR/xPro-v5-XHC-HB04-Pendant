@@ -1,6 +1,5 @@
 const config = require('./xhcrc');
 const {USB_Init, xhc_set_display } = require("./USB_devices");
-// const { myTelnet } = require("./myTelnet");
 const { Telnet_Init } = require('./myTelnet');
 
 // initialize buttons to nothing pressed;

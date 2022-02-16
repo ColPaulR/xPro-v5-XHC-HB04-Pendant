@@ -6,14 +6,9 @@ const { Telnet_Init } = require('./myTelnet');
 var prevButtons = [0, 0];
 
 var CNC_state = {
-  // Default to off axis, which ignores buttons and switches
   axis: 0,
-
-  // Default to 2% / 0.001
   feedselect: 0,
-
-  // CNC parameters
-  WPos: [1, 2, 3],
+  WPos: [],
   MPos: [],
   WCO: []
 };

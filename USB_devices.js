@@ -1,5 +1,8 @@
 const HID = require('node-hid');
 
+// initialize buttons to nothing pressed;
+var prevButtons = [0, 0];
+
 // Create USB transfer buffer
 var buff = new Buffer.alloc(21);
 
@@ -8,16 +11,32 @@ buff[0] = 0xFE;
 buff[1] = 0xFD;
 buff[2] = 0x04;
 
+// USB Output device
+var dev_USB_OUT;
+
+// Telnet device
+var myTelnet;
+
+// Configuration paramaters
+var config;
+
+// CNC variables
+var CNC_state;
+
 // Find XHC-HB04
-function USB_Init(HID_VID, HID_PID) {
-  const devices = HID.devices(HID_VID, HID_PID);
-  
+function USB_Init(config_in, CNC_state_in, myTelnet_in) {
+  // Copy parameters to module variables
+  CNC_state=CNC_state_in;
+  myTelnet=myTelnet_in;
+  config=config_in;
+
+  const devices = HID.devices(config.HID_VID, config.HID_PID);
+
   if (devices.length === 0) {
-    console.error("Could not find HID device with VID=0x%s and PID=0x%s", HID_VID.toString(16), HID_PID.toString(16));
+    console.error("Could not find HID device with VID=0x%s and PID=0x%s", config.HID_VID.toString(16), config.HID_PID.toString(16));
     process.exit(1);
   }
 
-  var dev_USB_OUT;
   var dev_USB_IN;
 
   if (devices.length > 1) {
@@ -37,6 +56,7 @@ function USB_Init(HID_VID, HID_PID) {
     dev_USB_IN = new HID.HID(devices[0].path);
     dev_USB_OUT = dev_USB_IN;
   }
+  
   if (!dev_USB_IN) {
     console.log('USB Pendant not found');
     process.exit(1);
@@ -55,30 +75,12 @@ function USB_Init(HID_VID, HID_PID) {
 
   console.log("found XHC-HB04 device");
 
-  return dev_USB_IN;
+  // Setup callback for data in
+  dev_USB_IN.on('data', function (d) {
+    parseButtonData(d);
+  });
 }
 
-function xhc_display_encode() {
-  // Determine which axis to use
-  // Assumes 3 axis so ignores axis rotary knob
-  var DispAxis = [0, 0, 0];
-
-  if (WorkPos) {
-    DispAxis = CNC_State.WPos;
-  } else {
-    DispAxis = CNC_State.MPos;
-  }
-
-  // Stp, Cont, MPG or nothing [0:1]
-  // MC 0; WC 1 [7]
-  buff[3] = (0x80 & WorkPos);
-  //buff[16]=6;
-
-  // Update XYZ
-  xhc_encode_float(DispAxis[0], 4);
-  xhc_encode_float(DispAxis[1], 8);
-  xhc_encode_float(DispAxis[2], 12);
-}
 
 function xhc_encode_float(v, buff_offset) {
   // Make integer part fraction into unsigned integer number
@@ -105,7 +107,26 @@ function xhc_uint16_to_buffer(v, offset) {
 
 function xhc_set_display() {
   // Format the display data into a buffer
-  xhc_display_encode();
+  var DispAxis;
+
+  if (config.WorkPos) {
+    DispAxis = CNC_state.WPos;
+    buff[3] |= 0x80;
+  } else {
+    DispAxis = CNC_state.MPos;
+  }
+
+  if (DispAxis.length <1) {
+    return;
+  }
+  // Stp, Cont, MPG or nothing [0:1]
+  // MC 0; WC 1 [7]
+  //buff[16]=6;
+
+  // Update XYZ
+  xhc_encode_float(DispAxis[0], 4);
+  xhc_encode_float(DispAxis[1], 8);
+  xhc_encode_float(DispAxis[2], 12);
 
   // Packetize buffer
   var packets = Buffer.allocUnsafe(8);
@@ -125,7 +146,241 @@ function xhc_set_display() {
   }
 }
 
+// Data available parsing function
+function parseButtonData(data) {
+  // console.log("usb data:", data, " len:", data.length);
+
+  // Process feed knob
+  // if (feedselect!=data[4]){
+  //     console.log("Feed selector change from %d to %d",feedselect,data[4]);
+  // }
+  CNC_state.feedselect = data[4];
+
+  // Process axis selector switch
+  if (CNC_state.axis != (data[5] - 0x11)) {
+    // console.log("Axis selector change from %d to %d",axis,data[5]-11);
+    // Save last axix
+    CNC_state.axis = data[5] - 0x11;// If axis selector is "off", clear last buttons and ignore everything else
+  }
+
+  if (data[5] == 6) {
+    // Axis selector is off
+    // Clear all prior button presses
+    prevButtons = [0, 0];
+
+    // Don't process message any further
+    return;
+  }
+
+  // Create newButtons slice of data buffer
+  var newButtons = [data[2], data[3]];;
+
+  // At least one button was pressed
+  // Check to see if button 1 was recorded previously
+  if ((newButtons[0]) && (!prevButtons.includes(newButtons[0]))) {
+    // Button1 was not recorded previous
+    // console.log("Button %d is down",newButtons[0]);
+
+    // Process button press
+    doButton(newButtons, 0, data[4]);
+  }
+
+  // Check to see if button 2 was recorded previously
+  if ((newButtons[1]) && (!prevButtons.includes(newButtons[1]))) {
+    // Button2 was not recorded previous
+    // console.log("Button %d is down",newButtons[1]);
+
+    // Process button press
+    doButton(newButtons, 1, data[4]);
+  }
+
+  // Check to see if previous button 1 is release
+  // if ((prevButtons[0]) && (!newButtons.includes(prevButtons[0]))) {
+  // Previous Button 1 is released
+  // console.log("Button %d is up",prevButtons[0]);
+  // }
+
+  // Check to see if previous button 2 is release
+  // if ((prevButtons[1]) && (!newButtons.includes(prevButtons[1]))) {
+  // Previous Button 2 is released
+  // console.log("Button %d is up",prevButtons[1]);
+  // }
+
+  // Record new buttons
+  prevButtons = newButtons;
+
+  // Process jog dial
+  if (data[6]) {
+    // data[6] is a int8 need to determine sign
+    var iJog = (data[6] > 127 ? data[6] - 256 : data[6]);
+    //console.log("Jog dial is %i", iJog);
+    const axischars = "XYZA";
+
+    switch (data[4]) {
+      case 13:
+        // 13 = 0.001
+        iJog *= 0.01;
+        break;
+      case 14:
+        // 14 = 0.01         
+        iJog *= 0.1;
+        break;
+      case 15:
+        // 15 = 0.1
+        iJog *= 1;
+        break;
+      case 16:
+        // 16 = 1
+        iJog *= 10;
+        break;
+      case 26:
+        // 26 = 60%
+        iJog *= 100;
+        break;
+      case 27:
+        // 27 = 100%
+        iJog *= 250;
+        break;
+      default:
+        // 28 = Lead 
+        return;
+    }
+    // Log or send string to telnet
+    var myString = "$J=G21G91" + axischars[CNC_state.axis] + iJog.toPrecision(4) + "F2500\r\n";
+    console.log(myString);
+    myTelnet.write(myString);
+  }
+}
+
+function doButton(newButtons, iButton, feedknob) {
+  // console.log("Button %d is down",newButtons[iButton]);
+
+  switch (newButtons[iButton]) {
+    case 1:
+      // Reset button
+      myTelnet.write("$X\r\n");
+      break;
+    case 2:
+      // Stop button
+      // console.log("$X\r\n");
+      break;
+    case 2:
+      // Stop button
+      // console.log("$X\r\n");
+      break;
+    case 3:
+      // Start/pause button
+      // console.log("$X\r\n");
+      break;
+    case 4:
+      // Feed+ button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        if (feedknob <= 16) {
+          console.log("0x93");
+        } else {
+          console.log("0x91");
+        }
+      } else {
+        // Do Macro 1
+        console.log("Macro 1");
+      }
+      break;
+    case 5:
+      // Feed- button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        if (feedknob <= 16) {
+          console.log("0x94");
+        } else {
+          console.log("0x92");
+        }
+      } else {
+        // Do Macro 2
+        console.log("Macro 2");
+      }
+      break;
+    case 6:
+      // Spindle+ button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        if (feedknob <= 16) {
+          console.log("0x9C");
+        } else {
+          console.log("0x9A");
+        }
+      } else {
+        // Do Macro 3
+      }
+      break;
+    case 7:
+      // Spindle- button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        if (feedknob <= 16) {
+          console.log("0x9D");
+        } else {
+          console.log("0x9B");
+        }
+      } else {
+        // Do Macro 5
+      }
+      break;
+    case 8:
+      // M-Home button
+      if (newButtons.includes(12)) {
+        myTelnet.write("$H\r\n");
+      } else {
+        // Do Macro 5
+      }
+      break;
+    case 9:
+      // Safe-Z button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        // Safe Z
+      } else {
+        // Do Macro 6
+      }
+      break;
+    case 10:
+      // W-Home button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        console.log("G10 P1 L20 X0 Y0 Z0\r\n");
+      } else {
+        // Do Macro 7
+      }
+      break;
+    case 11:
+      // Spindle On/Off button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        console.log("Spindle Toggle\r\n");
+      } else {
+        // Do Macro 8
+      }
+      break;
+    case 13:
+      // Probe-Z button
+      if (newButtons.includes(12)) {
+        // Function key is pressed.
+        console.log("Probe Z\r\n");
+      } else {
+        // Do Macro 9
+        console.log("Macro9");
+      }
+      break;
+    case 16:
+      // Do Macro 10
+      console.log("Macro10");
+      break;
+    default:
+  }
+}
+
 module.exports = {
   USB_Init,
   xhc_set_display
 };
+

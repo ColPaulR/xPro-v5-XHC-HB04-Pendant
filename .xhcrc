@@ -3,6 +3,7 @@
     "PORT":23,
     "HID_VID":4302, 
     "HID_PID":60307,
+    "WorkPos":1,
     "macros": [
         {
             "1":"?\n" 

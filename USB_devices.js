@@ -15,7 +15,7 @@ buff[2] = 0x04;
 var dev_USB_OUT;
 
 // Telnet device
-var myTelnet;
+var mySocket;
 
 // Configuration paramaters
 var config;
@@ -24,10 +24,10 @@ var config;
 var CNC_state;
 
 // Find XHC-HB04
-function USB_Init(config_in, CNC_state_in, myTelnet_in) {
+function USB_Init(config_in, CNC_state_in, mySocket_in) {
   // Copy parameters to module variables
   CNC_state=CNC_state_in;
-  myTelnet=myTelnet_in;
+  mySocket=mySocket_in;
   config=config_in;
 
   const devices = HID.devices(config.HID_VID, config.HID_PID);
@@ -76,8 +76,8 @@ function USB_Init(config_in, CNC_state_in, myTelnet_in) {
   console.log("found XHC-HB04 device");
 
   // Setup callback for data in
-  dev_USB_IN.on('data', function (d) {
-    parseButtonData(d);
+  dev_USB_IN.on('data', function (data) {
+    parseButtonData(data);
   });
 }
 
@@ -114,7 +114,11 @@ function xhc_set_display() {
     buff[3] |= 0x80;
   } else {
     DispAxis = CNC_state.MPos;
+    buff[3] &= !0x80;
   }
+
+  // Set display to step
+  buff[3] |= 0x01;
 
   if (DispAxis.length <1) {
     return;
@@ -148,7 +152,7 @@ function xhc_set_display() {
 
 // Data available parsing function
 function parseButtonData(data) {
-  // console.log("usb data:", data, " len:", data.length);
+  //console.log("usb data:", data, " len:", data.length);
 
   // Process feed knob
   // if (feedselect!=data[4]){
@@ -245,10 +249,10 @@ function parseButtonData(data) {
         // 28 = Lead 
         return;
     }
-    // Log or send string to telnet
-    var myString = "$J=G21G91" + axischars[CNC_state.axis] + iJog.toPrecision(4) + "F2500\r\n";
-    console.log(myString);
-    myTelnet.write(myString);
+    // Log or send string to socket
+    var myString = "$J=G21G91" + axischars[CNC_state.axis] + iJog.toPrecision(4)
+                    + "F" + config.JogRate.toString() + "\r\n";
+    doJog(myString);
   }
 }
 
@@ -258,7 +262,7 @@ function doButton(newButtons, iButton, feedknob) {
   switch (newButtons[iButton]) {
     case 1:
       // Reset button
-      myTelnet.write("$X\r\n");
+      Send_Button("$X\r\n");
       break;
     case 2:
       // Stop button
@@ -277,9 +281,9 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         if (feedknob <= 16) {
-          console.log("0x93");
+          Send_Button("0x93");
         } else {
-          console.log("0x91");
+          Send_Button("0x91");
         }
       } else {
         // Do Macro 1
@@ -291,9 +295,9 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         if (feedknob <= 16) {
-          console.log("0x94");
+          Send_Button("0x94");
         } else {
-          console.log("0x92");
+          Send_Button("0x92");
         }
       } else {
         // Do Macro 2
@@ -305,12 +309,13 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         if (feedknob <= 16) {
-          console.log("0x9C");
+          Send_Button("0x9C");
         } else {
-          console.log("0x9A");
+          Send_Button("0x9A");
         }
       } else {
         // Do Macro 3
+        console.log("Macro 3");
       }
       break;
     case 7:
@@ -318,20 +323,22 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         if (feedknob <= 16) {
-          console.log("0x9D");
+          Send_Button("0x9D");
         } else {
-          console.log("0x9B");
+          Send_Button("0x9B");
         }
       } else {
-        // Do Macro 5
+        // Do Macro 4
+        console.log("Macro 4");
       }
       break;
     case 8:
       // M-Home button
       if (newButtons.includes(12)) {
-        myTelnet.write("$H\r\n");
+        Send_Button("$H\r\n");
       } else {
         // Do Macro 5
+        console.log("Macro 5");
       }
       break;
     case 9:
@@ -341,15 +348,17 @@ function doButton(newButtons, iButton, feedknob) {
         // Safe Z
       } else {
         // Do Macro 6
+        console.log("Macro 6");
       }
       break;
     case 10:
       // W-Home button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        console.log("G10 P1 L20 X0 Y0 Z0\r\n");
+        Send_Button("G10 P1 L20 X0 Y0 Z0\r\n");
       } else {
         // Do Macro 7
+        console.log("Macro 7");
       }
       break;
     case 11:
@@ -359,23 +368,54 @@ function doButton(newButtons, iButton, feedknob) {
         console.log("Spindle Toggle\r\n");
       } else {
         // Do Macro 8
+        console.log("Macro 8");
       }
       break;
     case 13:
       // Probe-Z button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        console.log("Probe Z\r\n");
+        doProbeZ();
       } else {
         // Do Macro 9
-        console.log("Macro9");
+        console.log("Macro 9");
       }
       break;
     case 16:
       // Do Macro 10
-      console.log("Macro10");
+      // console.log("Macro 10");
+      // Toggle between machine and work coordinates
+      config.WorkPos = !config.WorkPos; 
       break;
     default:
+  }
+}
+
+function Send_Button(myGCode) {
+  if (config.DryRunButtons) {
+    console.log (myGCode);
+  } else {
+    mySocket.write(myGCode);
+  }
+}
+
+function doProbeZ(){
+  if (!config.ProbeZ) {
+    console.log("No Probe macro defined");
+    return;
+  }
+  if (config.DruRunProbeZ) {
+    console.log(config.ProbeZ);
+  } else {
+    mySocket.write(config.ProbeZ);
+  }
+}
+
+function doJog(myGCode){
+  if (config.DryRunJog) {
+    console.log(myGCode);
+  } else {
+    mySocket.write(myGCode);
   }
 }
 

@@ -5,11 +5,13 @@ var bufTelnetIncoming = [];
 
 // Define GRBL cnc state
 var CNC_state = {
+    state: "",
     axis: 0,
     feedselect: 0,
     WPos: [],
     MPos: [],
-    WCO: []
+    WCO: [],
+    PinState: ""
 };
 
 // Machine or Work coordinates
@@ -50,7 +52,7 @@ function Telnet_Init(config, xhc_set_display) {
             myTelnet.write('?');
 
             // Restart timer to trigger after 500ms
-            setTimeout(cbTimer, 500);
+            setTimeout(cbTimer, 250);
         }
     }
     // Add a 'data' event handler for the client socket
@@ -67,7 +69,7 @@ function Telnet_Init(config, xhc_set_display) {
 function onTelnetData(data) {
     // send data to console log
     // console.log('DATA: ' + data);
-    
+
     // Add new data to end of incoming stack
     bufTelnetIncoming += data;
 
@@ -77,7 +79,7 @@ function onTelnetData(data) {
         // Found whole line so parse
         if (iNLCR) {
             // Non-zero length before \r\n
-            parseGrbl(bufTelnetIncoming.slice(0, iNLCR),WorkPos);
+            parseGrbl(bufTelnetIncoming.slice(0, iNLCR), WorkPos);
         }
 
         // Remove the string that was just parsed from the message queue
@@ -97,6 +99,19 @@ function parseGrbl(bufResponse) {
 
     // State may have substates separated by ':'. E.g. `Hold:'[0,1], `Door'[0-3]
     var myStateTemp = myBuff.shift().split(':');
+
+    // Compare new state to last state
+    if (myStateTemp != CNC_state.state) {
+        console.log("State changed from %s to %s", CNC_state.state, myStateTemp[0]);
+        CNC_state.state = myStateTemp[0];
+    }
+
+    // Check for pin states
+    if (!bufResponse.includes("Pn:")) {
+        CNC_state.PinState = "";
+    } else {
+        // console.log(bufResponse);
+    }
 
     while (myBuff.length > 0) {
         var strParts = myBuff.shift().split(':');
@@ -118,6 +133,10 @@ function parseGrbl(bufResponse) {
                 CNC_state.WCO = strParts[1].split(',');
                 break;
             case 'Ov':
+                break;
+            case 'Pn':
+                CNC_state.PinState = strParts[1];
+                // console.log(strParts);
                 break;
             default:
                 console.log('Data not handled: ' + strParts);

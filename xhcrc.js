@@ -9,4 +9,16 @@ try {
     process.exit(1);
 }
 
+// Set defaults
+if (!config.JogRate) {
+    config.JogRate = 2500;
+}
+
+if (config.DryRun) {
+    // Dry run everything
+    config.DryRunButtons = 1;
+    config.DryRunJog = 1;
+    config.DruRunProbeZ = 1;
+}
+
 module.exports = config;

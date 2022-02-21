@@ -1,7 +1,14 @@
 const HID = require('node-hid');
 
+// Array used to transmit selected axis
+const axischars = "XYZA";
+
 // initialize buttons to nothing pressed;
 var prevButtons = [0, 0];
+
+// Knobs
+var feedknob;
+var axisknob;
 
 // Create USB transfer buffer
 var buff = new Buffer.alloc(21);
@@ -26,9 +33,9 @@ var CNC_state;
 // Find XHC-HB04
 function USB_Init(config_in, CNC_state_in, mySocket_in) {
   // Copy parameters to module variables
-  CNC_state=CNC_state_in;
-  mySocket=mySocket_in;
-  config=config_in;
+  CNC_state = CNC_state_in;
+  mySocket = mySocket_in;
+  config = config_in;
 
   const devices = HID.devices(config.HID_VID, config.HID_PID);
 
@@ -56,7 +63,7 @@ function USB_Init(config_in, CNC_state_in, mySocket_in) {
     dev_USB_IN = new HID.HID(devices[0].path);
     dev_USB_OUT = dev_USB_IN;
   }
-  
+
   if (!dev_USB_IN) {
     console.log('USB Pendant not found');
     process.exit(1);
@@ -120,7 +127,7 @@ function xhc_set_display() {
   // Set display to step
   buff[3] |= 0x01;
 
-  if (DispAxis.length <1) {
+  if (DispAxis.length < 1) {
     return;
   }
   // Stp, Cont, MPG or nothing [0:1]
@@ -154,19 +161,12 @@ function xhc_set_display() {
 function parseButtonData(data) {
   //console.log("usb data:", data, " len:", data.length);
 
-  // Process feed knob
-  // if (feedselect!=data[4]){
-  //     console.log("Feed selector change from %d to %d",feedselect,data[4]);
-  // }
-  CNC_state.feedselect = data[4];
+  feedknob = data[4];
 
   // Process axis selector switch
-  if (CNC_state.axis != (data[5] - 0x11)) {
-    // console.log("Axis selector change from %d to %d",axis,data[5]-11);
-    // Save last axix
-    CNC_state.axis = data[5] - 0x11;// If axis selector is "off", clear last buttons and ignore everything else
-  }
-
+  axisknob = data[5] - 0x11;
+  
+  // If axis selector is "off", clear last buttons and ignore everything else
   if (data[5] == 6) {
     // Axis selector is off
     // Clear all prior button presses
@@ -218,40 +218,43 @@ function parseButtonData(data) {
     // data[6] is a int8 need to determine sign
     var iJog = (data[6] > 127 ? data[6] - 256 : data[6]);
     //console.log("Jog dial is %i", iJog);
-    const axischars = "XYZA";
 
     switch (data[4]) {
       case 13:
         // 13 = 0.001
-        iJog *= 0.01;
+        iJog *= 0.001;
         break;
       case 14:
         // 14 = 0.01         
-        iJog *= 0.1;
+        iJog *= 0.01;
         break;
       case 15:
         // 15 = 0.1
-        iJog *= 1;
+        iJog *= 0.1;
         break;
       case 16:
         // 16 = 1
-        iJog *= 10;
+        iJog *= 1;
         break;
       case 26:
         // 26 = 60%
-        iJog *= 100;
+        iJog *= 10;
         break;
       case 27:
         // 27 = 100%
+        iJog *= 100;
+        break;
+      case 28:
+        // 28 = Lead 
         iJog *= 250;
         break;
       default:
-        // 28 = Lead 
+        console.log("Feed select value %d not handled", data[4]);
         return;
     }
     // Log or send string to socket
-    var myString = "$J=G21G91" + axischars[CNC_state.axis] + iJog.toPrecision(4)
-                    + "F" + config.JogRate.toString() + "\r\n";
+    var myString = "$J=G21G91" + axischars[axisknob] + iJog.toPrecision(4)
+      + "F" + config.JogRate.toString() + "\n";
     doJog(myString);
   }
 }
@@ -280,10 +283,10 @@ function doButton(newButtons, iButton, feedknob) {
       // Feed+ button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        if (feedknob <= 16) {
-          Send_Button("0x93");
+        if (feedknob < 16) {
+          Send_Button(String.fromCharCode(0x93));
         } else {
-          Send_Button("0x91");
+          Send_Button(String.fromCharCode(0x91));
         }
       } else {
         // Do Macro 1
@@ -294,10 +297,10 @@ function doButton(newButtons, iButton, feedknob) {
       // Feed- button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        if (feedknob <= 16) {
-          Send_Button("0x94");
+        if (feedknob < 16) {
+          Send_Button(String.fromCharCode(0x94));
         } else {
-          Send_Button("0x92");
+          Send_Button(String.fromCharCode(0x92));
         }
       } else {
         // Do Macro 2
@@ -308,10 +311,10 @@ function doButton(newButtons, iButton, feedknob) {
       // Spindle+ button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        if (feedknob <= 16) {
-          Send_Button("0x9C");
+        if (feedknob < 16) {
+          Send_Button(String.fromCharCode(0x9C));
         } else {
-          Send_Button("0x9A");
+          Send_Button(String.fromCharCode(0x9A));
         }
       } else {
         // Do Macro 3
@@ -322,10 +325,10 @@ function doButton(newButtons, iButton, feedknob) {
       // Spindle- button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        if (feedknob <= 16) {
-          Send_Button("0x9D");
+        if (feedknob < 16) {
+          Send_Button(String.fromCharCode(0x9D));
         } else {
-          Send_Button("0x9B");
+          Send_Button(String.fromCharCode(0x9B));
         }
       } else {
         // Do Macro 4
@@ -365,7 +368,12 @@ function doButton(newButtons, iButton, feedknob) {
       // Spindle On/Off button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        console.log("Spindle Toggle\r\n");
+        // console.log("Spindle Toggle\r\n");
+        if (CNC_state.SpindleSpeed>0) {
+          Send_Button("M5");
+        } else {
+          Send_Button("M3");
+        }
       } else {
         // Do Macro 8
         console.log("Macro 8");
@@ -385,7 +393,7 @@ function doButton(newButtons, iButton, feedknob) {
       // Do Macro 10
       // console.log("Macro 10");
       // Toggle between machine and work coordinates
-      config.WorkPos = !config.WorkPos; 
+      config.WorkPos = !config.WorkPos;
       break;
     default:
   }
@@ -393,13 +401,13 @@ function doButton(newButtons, iButton, feedknob) {
 
 function Send_Button(myGCode) {
   if (config.DryRunButtons) {
-    console.log (myGCode);
+    console.log(myGCode);
   } else {
-    mySocket.write(myGCode);
+    mySocket.write(myGCode+"\n");
   }
 }
 
-function doProbeZ(){
+function doProbeZ() {
   if (!config.ProbeZ) {
     console.log("No Probe macro defined");
     return;
@@ -411,7 +419,7 @@ function doProbeZ(){
   }
 }
 
-function doJog(myGCode){
+function doJog(myGCode) {
   if (config.DryRunJog) {
     console.log(myGCode);
   } else {

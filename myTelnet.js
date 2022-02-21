@@ -6,8 +6,10 @@ var bufTelnetIncoming = [];
 // Define GRBL cnc state
 var CNC_state = {
     state: "",
-    axis: 0,
-    feedselect: 0,
+    // axis: 0,
+    // feedselect: 0,
+    FeedRate: 0,
+    SpindleSpeed: 0,
     WPos: [],
     MPos: [],
     WCO: [],
@@ -126,20 +128,41 @@ function parseGrbl(bufResponse) {
                     }
                 }
                 break;
+            case 'F':
+                console.log(bufResponse);
+                CNC_state.FeedRate = strParts[1];
+                break;
             case 'FS':
+                // console.log(bufResponse);
                 var myArray = strParts[1].split(',');
+                if (myArray.length == 2) {
+                    CNC_state.FeedRate = myArray[0];
+                    CNC_state.SpindleSpeed = myArray[1];
+                }
                 break;
             case 'WCO':
                 CNC_state.WCO = strParts[1].split(',');
                 break;
             case 'Ov':
+                // Ignore feed, rapid, and spindle overrides
+                // console.log(bufResponse);
                 break;
             case 'Pn':
                 CNC_state.PinState = strParts[1];
                 // console.log(strParts);
                 break;
+            case 'A':
+                /* ignore accessories 
+                    S indicates spindle is enabled in the CW direction. This does not appear with C.
+                    C indicates spindle is enabled in the CCW direction. This does not appear with S.
+                    F indicates flood coolant is enabled.
+                    M indicates mist coolant is enabled.S - spindle
+                */
+               break;
             default:
                 console.log('Data not handled: ' + strParts);
+                console.log('Data not handled: ' + bufResponse);
+
                 break
         }
     }

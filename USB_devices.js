@@ -165,7 +165,7 @@ function parseButtonData(data) {
 
   // Process axis selector switch
   axisknob = data[5] - 0x11;
-  
+
   // If axis selector is "off", clear last buttons and ignore everything else
   if (data[5] == 6) {
     // Axis selector is off
@@ -338,7 +338,14 @@ function doButton(newButtons, iButton, feedknob) {
     case 8:
       // M-Home button
       if (newButtons.includes(12)) {
-        Send_Button("$H\r\n");
+        switch (CNC_state.state) {
+          case "Idle":
+          case "Check":
+            Send_Button("$H\r\n");
+            break;
+          default:
+            console.log("Cannot home in state %s", CNC_state.state)
+        }
       } else {
         // Do Macro 5
         console.log("Macro 5");
@@ -358,7 +365,14 @@ function doButton(newButtons, iButton, feedknob) {
       // W-Home button
       if (newButtons.includes(12)) {
         // Function key is pressed.
-        Send_Button("G10 P1 L20 X0 Y0 Z0\r\n");
+        switch (CNC_state.state) {
+          case "Idle":
+          case "Check":
+            Send_Button("G10 P1 L20 X0 Y0 Z0\r\n");
+            break;
+          default:
+            console.log("Cannot set workpiece home in state %s", CNC_state.state)
+        }
       } else {
         // Do Macro 7
         console.log("Macro 7");
@@ -369,10 +383,17 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         // console.log("Spindle Toggle\r\n");
-        if (CNC_state.SpindleSpeed>0) {
-          Send_Button("M5");
-        } else {
-          Send_Button("M3");
+        switch (CNC_state.state) {
+          case "Idle":
+          case "Check":
+            if (CNC_state.SpindleSpeed > 0) {
+              Send_Button("M5");
+            } else {
+              Send_Button("M3");
+            }
+            break;
+          default:
+            console.log("Cannot toggle spindle in state %s", CNC_state.state)
         }
       } else {
         // Do Macro 8
@@ -403,11 +424,21 @@ function Send_Button(myGCode) {
   if (config.DryRunButtons) {
     console.log(myGCode);
   } else {
-    mySocket.write(myGCode+"\n");
+    // Append new line just in case (no harm with empty lines)
+    mySocket.write(myGCode + "\n");
   }
 }
 
 function doProbeZ() {
+  // Check to see if current state allows probing
+  switch (CNC_state.state) {
+    case "Idle":
+      break;
+    default:
+      console.log("Cannot probe in %s state", CNC_state.state)
+      return;
+  }
+
   if (!config.ProbeZ) {
     console.log("No Probe macro defined");
     return;
@@ -420,6 +451,17 @@ function doProbeZ() {
 }
 
 function doJog(myGCode) {
+  // Check to see if current state allows jogging
+  switch (CNC_state.state) {
+    case "Idle":
+    case "Jog":
+    case "Check":
+      break;
+    default:
+      console.log("Cannot jog in %s state", CNC_state.state)
+      return;
+  }
+
   if (config.DryRunJog) {
     console.log(myGCode);
   } else {

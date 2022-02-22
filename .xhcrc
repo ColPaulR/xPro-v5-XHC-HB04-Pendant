@@ -17,5 +17,6 @@
     "DryRun": 0,
     "DryRunButtons": 0,
     "DryRunJog": 0,
-    "DruRunProbeZ": 0
+    "DruRunProbeZ": 0,
+    "LogStream": 1
 }

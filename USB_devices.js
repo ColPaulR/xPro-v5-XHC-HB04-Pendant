@@ -274,16 +274,16 @@ function doButton(newButtons, iButton, feedknob) {
     case 3:
       // Start/pause button
       switch (CNC_state.state) {
-        case "IDLE":
-        case "RUN":
-        case "JOG":
+        case "Idle":
+        case "Run":
+        case "Jog":
           Send_Button("!\n");
           break;
-        case "HOLD":
+        case "Hold":
           Send_Button("~\n");
           break;
         default:
-          console.log("Cannot toggle pause/run in % state", CNC_state.state);
+          console.log("Cannot toggle pause/run in %s state", CNC_state.state);
       }
       // console.log("$X\r\n");
       break;

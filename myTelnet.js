@@ -1,4 +1,12 @@
 const net = require('net');
+var fs = require('fs');
+const { config } = require('process');
+
+// create file pointer
+var logger;
+
+// Log file stream or not
+var doLog = false;
 
 // create message stack
 var bufTelnetIncoming = [];
@@ -6,15 +14,13 @@ var bufTelnetIncoming = [];
 // Define GRBL cnc state
 var CNC_state = {
     state: "",
-    // axis: 0,
-    // feedselect: 0,
     FeedRate: 0,
     SpindleSpeed: 0,
     WPos: [],
     MPos: [],
     WCO: [],
     PinState: "",
-    Settings: []
+    Inches: 0
 };
 
 // Machine or Work coordinates
@@ -29,6 +35,7 @@ function Telnet_Init(config, xhc_set_display) {
     // Copy parameters to module variables
     WorkPos = config.WorkPos;
     xhc_display = xhc_set_display;
+    doLog = config.LogStream;
 
     // Create new socket
     var myTelnet = new net.Socket();
@@ -45,6 +52,7 @@ function Telnet_Init(config, xhc_set_display) {
     myTelnet.on('close', function () {
         console.log('Connection closed');
         myTelnet.destroy();
+        process.exit(1);
     });
 
     // Timer functions
@@ -73,6 +81,15 @@ function onTelnetData(data) {
     // send data to console log
     // console.log('DATA: ' + data);
 
+    // Log data to file if required
+    if (doLog) {
+        // Create file on first call
+        if (!logger) logger = fs.createWriteStream('./GRBL_log.txt');
+
+        // Write new data
+        logger.write(data);
+    }
+
     // Add new data to end of incoming stack
     bufTelnetIncoming += data;
 
@@ -93,16 +110,37 @@ function onTelnetData(data) {
 
 // Begin XHC out and Grbl parsing functions
 function parseGrbl(bufResponse) {
+    // echo line
+    // console.log(bufResponse);
+
     // check for settings
     if (bufResponse[0] == '$') {
-        var myArray=bufResponse.slice(1).split("=");
+        var myArray = bufResponse.slice(1).split("=");
 
         // Only allow for setting number and value
         if (myArray.length != 2) return false;
 
-        // Store value in CNC State
-        CNC_state.Settings[myArray[0]]=myArray[1];
-
+        // Store value in CNC State if needed
+        switch (myArray[0]) {
+            case '13':
+                // Set for inches; zero for mm
+                CNC_state.Inches = parseInt(myArray[1]);
+                break;
+            case '110':
+            case '111':
+            case '112':
+                // Use the minimum feedrate for jog rate
+                if (CNC_state.FeedRate) {
+                    // Feedrate previously set
+                    CNC_state.FeedRate = Math.min(CNC_state.FeedRate, parseInt(myArray[1]));
+                } else {
+                    // Feedrate uninitialized/0
+                    CNC_state.FeedRate =  parseInt(myArray[1]);
+                }
+                break;
+            default:
+        }
+        
         // return success
         return true;
     }
@@ -119,7 +157,7 @@ function parseGrbl(bufResponse) {
     var myStateTemp = myBuff.shift().split(':');
 
     // Compare new state to last state
-    if (myStateTemp != CNC_state.state) {
+    if (myStateTemp[0] != CNC_state.state) {
         console.log("State changed from %s to %s", CNC_state.state, myStateTemp[0]);
         CNC_state.state = myStateTemp[0];
     }
@@ -174,7 +212,7 @@ function parseGrbl(bufResponse) {
                     F indicates flood coolant is enabled.
                     M indicates mist coolant is enabled.S - spindle
                 */
-               break;
+                break;
             default:
                 console.log('Data not handled: ' + strParts);
                 console.log('Data not handled: ' + bufResponse);
@@ -184,7 +222,7 @@ function parseGrbl(bufResponse) {
     }
 
     xhc_display();
-    
+
     // Return success
     return true;
 }

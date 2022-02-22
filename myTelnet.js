@@ -13,7 +13,8 @@ var CNC_state = {
     WPos: [],
     MPos: [],
     WCO: [],
-    PinState: ""
+    PinState: "",
+    Settings: []
 };
 
 // Machine or Work coordinates
@@ -81,7 +82,7 @@ function onTelnetData(data) {
         // Found whole line so parse
         if (iNLCR) {
             // Non-zero length before \r\n
-            parseGrbl(bufTelnetIncoming.slice(0, iNLCR), WorkPos);
+            parseGrbl(bufTelnetIncoming.slice(0, iNLCR));
         }
 
         // Remove the string that was just parsed from the message queue
@@ -92,7 +93,22 @@ function onTelnetData(data) {
 
 // Begin XHC out and Grbl parsing functions
 function parseGrbl(bufResponse) {
-    // data should begin with '<' and end with '>' 
+    // check for settings
+    if (bufResponse[0] == '$') {
+        var myArray=bufResponse.slice(1).split("=");
+
+        // Only allow for setting number and value
+        if (myArray.length != 2) return false;
+
+        // Store value in CNC State
+        CNC_state.Settings[myArray[0]]=myArray[1];
+
+        // return success
+        return true;
+    }
+
+    // status data should begin with '<' and end with '>' 
+    // Assume no further syntax remains other than <State|.....> so return failed if not status message
     if (bufResponse[0] != '<') return false;
     if (bufResponse.slice(-1) != '>') return false;
 
@@ -168,6 +184,9 @@ function parseGrbl(bufResponse) {
     }
 
     xhc_display();
+    
+    // Return success
+    return true;
 }
 
 

@@ -364,6 +364,7 @@ function doButton(newButtons, iButton, feedknob) {
       if (newButtons.includes(12)) {
         // Function key is pressed.
         // Safe Z
+        // Send_Button("G53 G1 Z-2.5\n");
       } else {
         // Do Macro 6
         console.log("Macro 6");

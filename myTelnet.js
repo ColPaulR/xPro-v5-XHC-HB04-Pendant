@@ -125,6 +125,12 @@ function parseGrbl(bufResponse) {
             case '13':
                 // Set for inches; zero for mm
                 CNC_state.Inches = parseInt(myArray[1]);
+
+                // For current code, only allow mm mode
+                if (CNC_state.Inches) {
+                    console.error("code currently only supports mm mode ($13=0");
+                    process.exit(1);
+                }
                 break;
             case '110':
             case '111':
@@ -135,12 +141,12 @@ function parseGrbl(bufResponse) {
                     CNC_state.FeedRate = Math.min(CNC_state.FeedRate, parseInt(myArray[1]));
                 } else {
                     // Feedrate uninitialized/0
-                    CNC_state.FeedRate =  parseInt(myArray[1]);
+                    CNC_state.FeedRate = parseInt(myArray[1]);
                 }
                 break;
             default:
         }
-        
+
         // return success
         return true;
     }

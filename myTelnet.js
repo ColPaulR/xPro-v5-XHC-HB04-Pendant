@@ -127,6 +127,12 @@ function parseGrbl(bufResponse) {
             case '13':
                 // Set for inches; zero for mm
                 CNC_state.Inches = parseInt(myArray[1]);
+
+                // For current code, only allow mm mode
+                if (CNC_state.Inches) {
+                    console.error("code currently only supports mm mode ($13=0");
+                    process.exit(1);
+                }
                 break;
             case '27':
                 // Homing switch pull-off distance, millimeters as string

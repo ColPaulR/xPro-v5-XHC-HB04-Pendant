@@ -9,10 +9,6 @@ try {
     process.exit(1);
 }
 
-// Set defaults
-if (!config.JogRate) {
-    config.JogRate = 2500;
-}
 
 if (config.DryRun) {
     // Dry run everything

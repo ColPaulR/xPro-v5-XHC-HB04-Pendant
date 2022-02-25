@@ -15,11 +15,13 @@ var bufTelnetIncoming = [];
 var CNC_state = {
     state: "",
     FeedRate: 0,
+    MaxRate: [],
     SpindleSpeed: 0,
     WPos: [],
     MPos: [],
     WCO: [],
     PinState: "",
+    Pull_Off: 0,
     Inches: 0
 };
 
@@ -126,21 +128,22 @@ function parseGrbl(bufResponse) {
                 // Set for inches; zero for mm
                 CNC_state.Inches = parseInt(myArray[1]);
                 break;
+            case '27':
+                // Homing switch pull-off distance, millimeters as string
+                CNC_state.Pull_Off = myArray[1];
+                break;
             case '110':
             case '111':
             case '112':
-                // Use the minimum feedrate for jog rate
-                if (CNC_state.FeedRate) {
-                    // Feedrate previously set
-                    CNC_state.FeedRate = Math.min(CNC_state.FeedRate, parseInt(myArray[1]));
-                } else {
-                    // Feedrate uninitialized/0
-                    CNC_state.FeedRate =  parseInt(myArray[1]);
-                }
+            case '113':
+            case '114':
+            case '115':
+                // Store maximum rate as string
+                CNC_state.MaxRate[(parseInt(myArray[0]) - 110)] = myArray[1];
                 break;
             default:
         }
-        
+
         // return success
         return true;
     }

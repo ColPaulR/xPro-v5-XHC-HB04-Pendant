@@ -31,6 +31,13 @@ var WorkPos;
 // External function
 var xhc_display;
 
+// Create new socket
+var myTelnet = new net.Socket();
+
+// IP config
+var HOST;
+var PORT;
+
 // Setup telnet connection and start listening
 function Telnet_Init(config, xhc_set_display) {
 
@@ -38,44 +45,78 @@ function Telnet_Init(config, xhc_set_display) {
     WorkPos = config.WorkPos;
     xhc_display = xhc_set_display;
     doLog = config.LogStream;
+    HOST = config.HOST;
+    PORT = config.PORT;
 
-    // Create new socket
-    var myTelnet = new net.Socket();
+    // Do connect routine
+    myConnect();
 
-    myTelnet.connect(config.PORT, config.HOST, function () {
-        // Log that we are connected to telnet
-        console.log('CONNECTED TO: ' + config.HOST + ':' + config.PORT);
+    // Set timeout
+    myTelnet.setTimeout(500);
+    myTelnet.setKeepAlive(true, 1000);
 
-        // Start timer 
-        cbTimer();
+    // reconnect on timeout
+    myTelnet.on('timeout', function () {
+        myConnect();
     });
 
     // Add a 'close' event handler for the myTelnet socket
     myTelnet.on('close', function () {
         console.log('Connection closed');
-        myTelnet.destroy();
-        process.exit(1);
+        //setTimeout(myConnect, 500);
     });
 
-    // Timer functions
-    function cbTimer() {
-        // Check to see if telnet is still connected
-        if (!myTelnet.destroyed) {
-            // query Grbl status
-            myTelnet.write('?');
-
-            // Restart timer to trigger after 500ms
-            setTimeout(cbTimer, 250);
-        }
-    }
     // Add a 'data' event handler for the client socket
     // data is what the server sent to this socket
     myTelnet.on('data', function (data) {
         onTelnetData(data);
     });
 
+    myTelnet.on('error', function (err) {
+        switch (err.code) {
+            case 'ECONNRESET':
+                console.log("Telnet connection reset.");
+            case 'ETIMEDOUT':
+                console.log("Telnet connection timed out.");
+                break;
+            default:
+                console.log("err: " + err);
+                process.exit(1);
+        }
+        myConnect();
+        // setTimeout(myConnect, 500);
+    });
+
     // Pass reference to open socket back to caller
     return myTelnet;
+}
+
+function myConnect() {
+    // Return immedia
+    if (!myTelnet.connecting) {
+        myTelnet.removeAllListeners();
+        myTelnet.connect(PORT, HOST, function () {
+            // Log that we are connected to telnet
+            console.log('CONNECTED TO: ' + HOST + ':' + PORT);
+
+            // Start timer 
+            cbTimer();
+        });
+    }
+}
+
+
+
+// Timer functions
+function cbTimer() {
+    // Check to see if telnet is still connected
+    if (!myTelnet.destroyed) {
+        // query Grbl status
+        myTelnet.write('?');
+
+        // Restart timer to trigger after 500ms
+        setTimeout(cbTimer, 250);
+    }
 }
 
 // Telnet functions
